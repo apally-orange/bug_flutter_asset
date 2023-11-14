@@ -1,10 +1,11 @@
-import 'package:dark_icon_error/asset_bundle.dart';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 void main() {
-  runApp(const MyAssetBundle(
-    child: MyApp(),
-  ));
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -42,6 +43,35 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  Future<ByteData> resolveAsset() async {
+    const key = 'assets/dark/flutter.jpg';
+    ByteData? asset = await _getAssetsFromKey(key);
+    const darkFolder = '/dark/';
+    if (asset == null && key.contains(darkFolder)) {
+      final lightKey = key.replaceAll(darkFolder, '/light/');
+      asset = await _getAssetsFromKey(lightKey);
+    }
+
+    if (asset == null) {
+      throw FlutterError('Unable to load asset: $key');
+    }
+
+    return asset;
+  }
+
+  Future<ByteData?> _getAssetsFromKey(String key) async {
+    final Uint8List encoded = utf8.encoder.convert(
+      Uri(
+        path: Uri.encodeFull(key),
+      ).path,
+    );
+
+    return await ServicesBinding.instance.defaultBinaryMessenger.send(
+      'flutter/assets',
+      encoded.buffer.asByteData(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -53,10 +83,19 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            Image.asset(
-              'assets/dark/flutter.jpg',
-              height: 250,
-            ),
+            FutureBuilder(
+                future: resolveAsset(),
+                builder: (context, result) {
+                  final safeData = result.data;
+                  if (result.hasData && safeData != null) {
+                    return Image.memory(
+                      safeData.buffer.asUint8List(),
+                      height: 250,
+                    );
+                  }
+
+                  return const SizedBox.shrink();
+                }),
             const Text(
               'You have pushed the button this many times:',
             ),
